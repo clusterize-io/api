@@ -1,0 +1,77 @@
+---
+options:
+  gobin:
+    default:
+      value: gobin -run
+
+  clusterctl:
+    default:
+      value: ${gobin} sigs.k8s.io/cluster-api/cmd/clusterctl@v0.3.16
+  
+  kind:
+    default:
+      value: ${gobin} sigs.k8s.io/kind@v0.10.0
+
+tasks:
+  cli-clusterctl:
+    run:
+      - ${clusterctl}
+
+  apply:
+    run:
+      - task:
+          name: delete
+      - task:
+          name: create
+
+  destroy:
+    options:
+      name:
+        default:
+          value: capi
+    run:
+      - ${kind} delete cluster --name ${name}
+
+  delete:
+    options:
+      name:
+        default:
+          value: capi
+    run:
+      - ${kind} delete cluster --name ${name}
+
+  create:
+    options:
+      name:
+        default:
+          value: capi
+    run:
+      - |
+          ${kind} create cluster \
+            --name ${name} \
+            --image projects.registry.vmware.com/clusterize/node:v1.20 \
+            --wait 0s \
+            --config - <<-------
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraMounts:
+              - hostPath: /var/run/docker.sock
+                containerPath: /var/run/docker.sock
+          ------
+      - kubectl rollout status deployment -n kube-system coredns
+      - kubectl rollout status daemonset -n kube-system kube-proxy
+      - kubectl get pods -A
+      - ${clusterctl} init --infrastructure docker
+      - kubectl rollout status deploy/capd-controller-manager -n capd-system
+      - kubectl rollout status deploy/capi-kubeadm-bootstrap-controller-manager -n capi-kubeadm-bootstrap-system
+      - kubectl rollout status deploy/capi-kubeadm-control-plane-controller-manager  -n capi-kubeadm-control-plane-system
+      - kubectl rollout status deploy/capi-controller-manager -n capi-system
+      - kubectl rollout status deploy/capi-controller-manager -n capi-webhook-system
+      - kubectl rollout status deploy/capi-kubeadm-bootstrap-controller-manager -n capi-webhook-system
+      - kubectl rollout status deploy/capi-kubeadm-control-plane-controller-manager -n capi-webhook-system
+      - kubectl rollout status deploy/cert-manager -n cert-manager
+      - kubectl rollout status deploy/cert-manager-cainjector -n cert-manager
+      - kubectl rollout status deploy/cert-manager-webhook -n cert-manager
+      - kubectl get pods -A
