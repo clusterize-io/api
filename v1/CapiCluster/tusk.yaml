@@ -46,6 +46,9 @@ tasks:
         default:
           value: capi
     run:
+      - set-environment:
+          EXP_CLUSTER_RESOURCE_SET: true
+          EXP_MACHINE_POOL: true
       - |
           ${kind} create cluster \
             --name ${name} \
@@ -63,7 +66,7 @@ tasks:
       - kubectl rollout status deployment -n kube-system coredns
       - kubectl rollout status daemonset -n kube-system kube-proxy
       - kubectl get pods -A
-      - ${clusterctl} init --infrastructure docker
+      - ${clusterctl} init --infrastructure docker || true
       - kubectl rollout status deploy/capd-controller-manager -n capd-system
       - kubectl rollout status deploy/capi-kubeadm-bootstrap-controller-manager -n capi-kubeadm-bootstrap-system
       - kubectl rollout status deploy/capi-kubeadm-control-plane-controller-manager  -n capi-kubeadm-control-plane-system

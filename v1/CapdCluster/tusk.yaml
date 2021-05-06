@@ -1,0 +1,319 @@
+---
+interpreter: bash -c
+
+options:
+  gobin:
+    default:
+      value: gobin -run
+
+  clusterctl:
+    default:
+      value: ${gobin} sigs.k8s.io/cluster-api/cmd/clusterctl@v0.3.16
+  
+  kind:
+    default:
+      value: ${gobin} sigs.k8s.io/kind@v0.10.0
+
+tasks:
+  task-calico:
+    options:
+      name:
+        default:
+          value: calico
+      name-etcd:
+        default:
+          value: ${name}-etcd
+    run:
+      # - kubectl delete cluster ${name} --wait || true
+      # - kubectl delete cluster ${name}-etcd --wait || true
+      # - |
+      #     kubectl create -f - <<-------
+      #     ---
+      #     apiVersion: cluster.x-k8s.io/v1alpha3
+      #     kind: Cluster
+      #     metadata:
+      #       name: ${name-etcd}
+      #       namespace: default
+      #     spec:
+      #       clusterNetwork:
+      #         pods:
+      #           cidrBlocks:
+      #           - 192.168.0.0/16
+      #         serviceDomain: cluster.local
+      #         services:
+      #           cidrBlocks:
+      #           - 10.128.0.0/12
+      #       controlPlaneRef:
+      #         apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+      #         kind: KubeadmControlPlane
+      #         name: ${name-etcd}-control-plane
+      #         namespace: default
+      #       infrastructureRef:
+      #         apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+      #         kind: DockerCluster
+      #         name: ${name-etcd}
+      #         namespace: default
+      #     ---
+      #     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+      #     kind: DockerCluster
+      #     metadata:
+      #       name: ${name-etcd}
+      #       namespace: default
+      #     ---
+      #     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+      #     kind: DockerMachineTemplate
+      #     metadata:
+      #       name: ${name-etcd}-control-plane
+      #       namespace: default
+      #     spec:
+      #       template:
+      #         spec:
+      #           extraMounts:
+      #           - containerPath: /var/run/docker.sock
+      #             hostPath: /var/run/docker.sock
+      #           customImage: projects.registry.vmware.com/clusterize/node:v1.20.2
+      #     ---
+      #     apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+      #     kind: KubeadmControlPlane
+      #     metadata:
+      #       name: ${name-etcd}-control-plane
+      #       namespace: default
+      #     spec:
+      #       infrastructureTemplate:
+      #         apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+      #         kind: DockerMachineTemplate
+      #         name: ${name-etcd}-control-plane
+      #         namespace: default
+      #       kubeadmConfigSpec:
+      #         clusterConfiguration:
+      #           apiServer:
+      #             certSANs:
+      #             - localhost
+      #             - 127.0.0.1
+      #           controllerManager:
+      #             extraArgs:
+      #               enable-hostpath-provisioner: "true"
+      #         initConfiguration:
+      #           nodeRegistration:
+      #             criSocket: /var/run/containerd/containerd.sock
+      #             kubeletExtraArgs:
+      #               eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+      #         joinConfiguration:
+      #           nodeRegistration:
+      #             criSocket: /var/run/containerd/containerd.sock
+      #             kubeletExtraArgs:
+      #               eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+      #       replicas: 3
+      #       version: v1.20.2
+      #     ------
+      #- kubectl wait --for=condition=EtcdClusterHealthyCondition=True kcp/${name-etcd}-control-plane --timeout 5m
+      - kubectl delete cluster ${name-etcd} --wait || true
+      - kubectl get clusters,machines
+      - sleep 10
+      - tusk create --name ${name-etcd} --workers 1
+      - kubectl wait --for=condition=InfrastructureReady=True machines -l=cluster.x-k8s.io/cluster-name=${name-etcd} --timeout 5m
+      - kubectl wait --for=condition=EtcdClusterHealthyCondition=True kcp/${name-etcd}-control-plane --timeout 5m
+      # - ${clusterctl} config cluster ${name} --flavor development --kubernetes-version v1.20.2 --control-plane-machine-count 3 --worker-machine-count 1 || true
+      # - tusk create --name ${name-etcd} --controlplanes 3 --workers 0
+      # - sleep 5 && k9s
+      # - kubectl get kcp,machines ${name-etcd}-control-plane
+
+  cli-clusterctl:
+    run:
+      - ${clusterctl}
+  
+  kubectl:
+    options:
+      name:
+        default:
+          value: capd
+    args:
+      cmd:
+        usage: command
+    run:
+      - kubectl --context kind-capi get secret ${name}-kubeconfig -o jsonpath={.data.value} | base64 --decode > /tmp/kubeconfig
+      - set-environment:
+          KUBECONFIG: /tmp/kubeconfig
+      - kubectl ${cmd}
+
+  get:
+    options:
+      name:
+        default:
+          value: capd
+    run:
+      - ${clusterctl} describe clusters -A || true
+      - kubectl get kubeadmcontrolplane -A
+      - kubectl get machines
+
+  apply:
+    options:
+      name:
+        default:
+          value: capd
+    run:
+      - task: delete
+      - task: create
+      - task: get
+
+  delete:
+    options:
+      name:
+        default:
+          value: capd
+    run:
+      - kubectl delete cluster ${name} --wait
+
+  create:
+    options:
+      name:
+        default:
+          value: capd
+      machine-image:
+        default:
+          value: projects.registry.vmware.com/clusterize/node
+      kubernetes-version:
+        default:
+          value: v1.20.2
+      controlplanes:
+        default:
+          value: 3
+      workers:
+        default:
+          value: 3
+    run:
+      # - |
+      #     ${clusterctl} config cluster ${name} \
+      #       --flavor development \
+      #       --kubernetes-version ${kubernetes-version} \
+      #       --control-plane-machine-count ${controlplanes} \
+      #       --worker-machine-count ${workers} || true
+      - |
+          kubectl create -f - <<-------
+          ---
+          apiVersion: cluster.x-k8s.io/v1alpha3
+          kind: Cluster
+          metadata:
+            name: ${name}
+            namespace: default
+          spec:
+            clusterNetwork:
+              pods:
+                cidrBlocks:
+                - 192.168.0.0/16
+              serviceDomain: cluster.local
+              services:
+                cidrBlocks:
+                - 10.128.0.0/12
+            controlPlaneRef:
+              apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+              kind: KubeadmControlPlane
+              name: ${name}-control-plane
+              namespace: default
+            infrastructureRef:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+              kind: DockerCluster
+              name: capd
+              namespace: default
+          ---
+          apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+          kind: DockerCluster
+          metadata:
+            name: capd
+            namespace: default
+          ---
+          apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+          kind: DockerMachineTemplate
+          metadata:
+            name: ${name}-control-plane
+            namespace: default
+          spec:
+            template:
+              spec:
+                extraMounts:
+                - containerPath: /var/run/docker.sock
+                  hostPath: /var/run/docker.sock
+                customImage: ${machine-image}:${kubernetes-version}
+          ---
+          apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+          kind: KubeadmControlPlane
+          metadata:
+            name: ${name}-control-plane
+            namespace: default
+          spec:
+            infrastructureTemplate:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+              kind: DockerMachineTemplate
+              name: ${name}-control-plane
+              namespace: default
+            kubeadmConfigSpec:
+              clusterConfiguration:
+                apiServer:
+                  certSANs:
+                  - localhost
+                  - 127.0.0.1
+                controllerManager:
+                  extraArgs:
+                    enable-hostpath-provisioner: "true"
+              initConfiguration:
+                nodeRegistration:
+                  criSocket: /var/run/containerd/containerd.sock
+                  kubeletExtraArgs:
+                    eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+              joinConfiguration:
+                nodeRegistration:
+                  criSocket: /var/run/containerd/containerd.sock
+                  kubeletExtraArgs:
+                    eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+            replicas: ${controlplanes}
+            version: ${kubernetes-version}
+          ---
+          apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+          kind: DockerMachineTemplate
+          metadata:
+            name: ${name}-md-0
+            namespace: default
+          spec:
+            template:
+              spec:
+                customImage: ${machine-image}:${kubernetes-version}
+          ---
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: KubeadmConfigTemplate
+          metadata:
+            name: ${name}-md-0
+            namespace: default
+          spec:
+            template:
+              spec:
+                joinConfiguration:
+                  nodeRegistration:
+                    kubeletExtraArgs:
+                      eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+          ---
+          apiVersion: cluster.x-k8s.io/v1alpha3
+          kind: MachineDeployment
+          metadata:
+            name: ${name}-md-0
+            namespace: default
+          spec:
+            clusterName: ${name}
+            replicas: ${workers}
+            selector:
+              matchLabels: null
+            template:
+              spec:
+                bootstrap:
+                  configRef:
+                    apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+                    kind: KubeadmConfigTemplate
+                    name: ${name}-md-0
+                    namespace: default
+                clusterName: ${name}
+                infrastructureRef:
+                  apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+                  kind: DockerMachineTemplate
+                  name: ${name}-md-0
+                  namespace: default
+                version: ${kubernetes-version}
+          ------
