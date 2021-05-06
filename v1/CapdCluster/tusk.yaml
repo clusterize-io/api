@@ -15,6 +15,123 @@ options:
       value: ${gobin} sigs.k8s.io/kind@v0.10.0
 
 tasks:
+  task-etcd:
+    run:
+
+      - kubectl get secrets calico-etcd-ca calico-etcd-etcd -o yaml
+      - kubectl get nodes -l=node-role.kubernetes.io/control-plane  --kubeconfig <(kubectl --context kind-capi get secret calico-etcd-kubeconfig -o jsonpath={.data.value} | base64 --decode) -o yaml | yq3 r - 'items[*].status.addresses[0].address' > /tmp/ips.txt
+      - |
+          kubectl get secrets calico-etcd-ca  -o yaml | yq3 r - 'data[tls.crt]' | base64 -d > /tmp/ca.pem
+          kubectl get secrets calico-etcd-etcd  -o yaml | yq3 r - 'data[tls.crt]' | base64 -d > /tmp/etcd.crt
+          kubectl get secrets calico-etcd-etcd  -o yaml | yq3 r - 'data[tls.key]' | base64 -d > /tmp/etcd.key
+          ETCDCTL_API=3 etcdctl \
+            --write-out=table \
+            --endpoints=https://$(cat /tmp/ips.txt | head -n 1):2379 \
+            --cacert=/tmp/ca.pem \
+            --cert=/tmp/etcd.crt \
+            --key=/tmp/etcd.key \
+            member list
+
+      # - cat /tmp/ips.txt | head -n 1
+      # - cat /tmp/ips.txt | head -n 2
+      # - cat /tmp/ips.txt | head -n 3
+      # - set-environment:
+      #     ETCDCTL_API: 3
+          # ETCD1: "$(cat /tmp/ips.txt | head -n 1)"
+          # ETCD2: "$(cat /tmp/ips.txt | head -n 2)"
+          # ETCD3: "$(cat /tmp/ips.txt | head -n 3)"
+      # - printenv | grep ETCD
+      # - |
+      #     ETCDCTL_CA_FILE="/etc/kubernetes/pki/etcd/ca.crt"
+      #     ETCDCTL_CERT_FILE="/etc/kubernetes/pki/etcd/peer.crt"
+      #     ETCDCTL_KEY_FILE="/etc/kubernetes/pki/etcd/peer.key"
+      #     ETCDCTL_ENDPOINT="https://$ETCD_IP_1:2379"
+      #     etcdctl --endpoints="https://`cat /tmp/ips.txt | head -n 1`:2379,https://`cat /tmp/ips.txt | head -n 2`:2379,https://`cat /tmp/ips.txt | head -n 3`:2379" member list
+
+      # - go-getter 'github.com/etcd-io/etcd?ref=v3.2.32' /tmp/etcd
+      # - rm -rf /tmp/etcd
+      # - git clone https://github.com/etcd-io/etcd.git /tmp/etcd
+      # - cd /tmp/etcd/etcdctl && go run .
+      # - |
+      #     apiVersion: v1
+      #     kind: Pod
+      #     metadata:
+      #       annotations:
+      #         kubeadm.kubernetes.io/etcd.advertise-client-urls: https://172.18.0.14:2379
+      #       creationTimestamp: null
+      #       labels:
+      #         component: etcd
+      #         tier: control-plane
+      #       name: etcd
+      #       namespace: kube-system
+      #     spec:
+      #       containers:
+      #       - command:
+      #         - etcd
+      #         - --advertise-client-urls=https://172.18.0.14:2379
+      #         - --cert-file=/etc/kubernetes/pki/etcd/server.crt
+      #         - --client-cert-auth=true
+      #         - --data-dir=/var/lib/etcd
+      #         - --initial-advertise-peer-urls=https://172.18.0.14:2380
+      #         - --initial-cluster=calico-etcd-control-plane-hfrjm=https://172.18.0.13:2380,calico-etcd-control-plane-xq484=https://172.18.0.14:2380,calico-etcd-control-plane-plqm2=https://172.18.0.11:2380
+      #         - --initial-cluster-state=existing
+      #         - --key-file=/etc/kubernetes/pki/etcd/server.key
+      #         - --listen-client-urls=https://127.0.0.1:2379,https://172.18.0.14:2379
+      #         - --listen-metrics-urls=http://127.0.0.1:2381
+      #         - --listen-peer-urls=https://172.18.0.14:2380
+      #         - --name=calico-etcd-control-plane-xq484
+      #         - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
+      #         - --peer-client-cert-auth=true
+      #         - --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
+      #         - --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+      #         - --snapshot-count=10000
+      #         - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+      #         image: k8s.gcr.io/etcd:3.4.13-0
+      #         imagePullPolicy: IfNotPresent
+      #         livenessProbe:
+      #           failureThreshold: 8
+      #           httpGet:
+      #             host: 127.0.0.1
+      #             path: /health
+      #             port: 2381
+      #             scheme: HTTP
+      #           initialDelaySeconds: 10
+      #           periodSeconds: 10
+      #           timeoutSeconds: 15
+      #         name: etcd
+      #         resources:
+      #           requests:
+      #             cpu: 100m
+      #             ephemeral-storage: 100Mi
+      #             memory: 100Mi
+      #         startupProbe:
+      #           failureThreshold: 24
+      #           httpGet:
+      #             host: 127.0.0.1
+      #             path: /health
+      #             port: 2381
+      #             scheme: HTTP
+      #           initialDelaySeconds: 10
+      #           periodSeconds: 10
+      #           timeoutSeconds: 15
+      #         volumeMounts:
+      #         - mountPath: /var/lib/etcd
+      #           name: etcd-data
+      #         - mountPath: /etc/kubernetes/pki/etcd
+      #           name: etcd-certs
+      #       hostNetwork: true
+      #       priorityClassName: system-node-critical
+      #       volumes:
+      #       - hostPath:
+      #           path: /etc/kubernetes/pki/etcd
+      #           type: DirectoryOrCreate
+      #         name: etcd-certs
+      #       - hostPath:
+      #           path: /var/lib/etcd
+      #           type: DirectoryOrCreate
+      #         name: etcd-data
+      #     status: {}
+
   task-calico:
     options:
       name:
@@ -23,6 +140,9 @@ tasks:
       name-etcd:
         default:
           value: ${name}-etcd
+      kubectl-etcd:
+        default:
+          value: kubectl get nodes --kubeconfig <(kubectl --context kind-capi get secret calico-etcd-kubeconfig -o jsonpath={.data.value} | base64 --decode)
     run:
       # - kubectl delete cluster ${name} --wait || true
       # - kubectl delete cluster ${name}-etcd --wait || true
@@ -111,8 +231,12 @@ tasks:
       - kubectl get clusters,machines
       - sleep 10
       - tusk create --name ${name-etcd} --workers 1
+      - sleep 5
+      - kubectl wait --for=condition=InfrastructureReady=True machines --all --timeout 5m -l=cluster.x-k8s.io/cluster-name=calico-etcd
       - kubectl wait --for=condition=InfrastructureReady=True machines -l=cluster.x-k8s.io/cluster-name=${name-etcd} --timeout 5m
-      - kubectl wait --for=condition=ControlPlaneComponentsHealthy=True kcp -l=cluster.x-k8s.io/cluster-name=${name-etcd} --timeout 5m
+      - kubectl wait --for=condition=ControlPlaneComponentsHealthy=True kcp -l=cluster.x-k8s.io/cluster-name=calico-etcd --timeout 5m
+      - kubectl get secrets calico-etcd-ca calico-etcd-etcd -o yaml
+      - kubectl get nodes -l=node-role.kubernetes.io/control-plane  --kubeconfig <(kubectl --context kind-capi get secret calico-etcd-kubeconfig -o jsonpath={.data.value} | base64 --decode) -o yaml | yq3 r - 'items[*].status.addresses[0].address'
       # - kubectl wait --for=condition=EtcdClusterHealthyCondition=True kcp/${name-etcd}-control-plane --timeout 5m
       # - ${clusterctl} config cluster ${name} --flavor development --kubernetes-version v1.20.2 --control-plane-machine-count 3 --worker-machine-count 1 || true
       # - tusk create --name ${name-etcd} --controlplanes 3 --workers 0
