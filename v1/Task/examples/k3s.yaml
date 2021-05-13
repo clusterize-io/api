@@ -1,0 +1,41 @@
+apiVersion: github.com/clusterize-io/api/v1
+kind: Task
+metadata:
+  name: k3d
+spec:
+  options:
+    cz:
+      environment: HOME
+    k3d:
+      # default: go install github.com/rancher/k3d/v4@v4.4.3 && k3d
+      default: go install github.com/rancher/k3d@latest && ${cz}/.clusterize/go/bin/k3d
+
+  tasks:
+    create:
+      run:
+        - set-environment:
+            GOBIN: ${cz}/.clusterize/go/bin
+        - mkdir -p ${cz}/.clusterize/go/bin
+        - ${k3d} create
+
+    delete:
+      run:
+        - set-environment:
+            GOBIN: ${cz}/.clusterize/go/bin
+        - ${k3d} delete || true
+
+    apply:
+      run:
+        - task: delete
+        - task: create
+
+    cli-kubectl:
+      run:
+        - ${k3d} get-kubeconfig --name='k3s-default'
+
+    cli-k3d:
+      args:
+        cmd:
+          usage: cmd
+      run:
+        - ${k3d} ${cmd}

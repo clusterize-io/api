@@ -1,0 +1,9 @@
+apiVersion: github.com/clusterize-io/api/v1
+kind: Task
+metadata:
+  name: minikube
+spec:
+  tasks:
+    create:
+      run:
+        - which minikube

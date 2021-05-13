@@ -1,0 +1,48 @@
+---
+interpreter: bash -c
+
+options:
+  gobin:
+    default: gobin
+  tusk:
+    default: tusk
+  yq3:
+    default: ${gobin} -run github.com/mikefarah/yq/v3@3.4.0
+
+tasks:
+  create:
+    options:
+      file:
+        short: f
+        required: true
+    run:
+      - ${tusk} -f <(${yq3} r ${file} spec) create
+
+  delete:
+    options:
+      file:
+        short: f
+        required: true
+    run:
+      - ${tusk} -f <(${yq3} r ${file} spec) delete
+
+  apply:
+    options:
+      file:
+        short: f
+        required: true
+    run:
+      - ${tusk} -f <(${yq3} r ${file} spec) apply
+
+  cli:
+    options:
+      file:
+        short: f
+        required: true
+    args:
+      name:
+        usage: name
+      cmd:
+        usage: cmd
+    run:
+      - ${tusk} -f <(${yq3} r ${file} spec) cli-${name} ${cmd}
