@@ -175,7 +175,7 @@ tasks:
       # - tusk create --networking.kubeProxyMode ipvs
       # - tusk create -k v1.16
 
-  lab-create:
+  lab-kind:
     run:
       - task:
           name: create
@@ -210,34 +210,44 @@ tasks:
                   name: jenkins
                   ports:
                   - containerPort: 8080
-                  # If you'd like your container to be killed and restarted if a probe fails, then specify a liveness probe, and specify a restartPolicy of Always or OnFailure.
-
-
-                  # livenessProbe:
-                  #   # initialDelaySeconds: 10
-                  #   # periodSeconds: 5
-                  #   # successThreshold: 1
-                  #   # failureThreshold: 12
-                  #   httpGet:
-                  #     path: /
-                  #     port: 8080
                   readinessProbe:
                     initialDelaySeconds: 5
                     periodSeconds: 5
+                    successThreshold: 1
                     httpGet:
                       path: /login
                       port: 8080
-                  # startupProbe:
-                  #   httpGet:
-                  #     path: /
-                  #     port: 8080
-                  #   failureThreshold: 30
-                  #   periodSeconds: 10
+                    # tcpSocket:
+                    #   port: 8080
+                  livenessProbe:
+                    initialDelaySeconds: 30
+                    periodSeconds: 5
+                    successThreshold: 1
+                    httpGet:
+                      path: /login
+                      port: 8080
+                    # tcpSocket:
+                    #   port: 8080
+
           ------
       - kubectl rollout status deployment jenkins
       - kubectl get pods -o wide
 
+  lab-patch:
+    run:
+      # - kubectl get deployment jenkins -o yaml | yq3 r - 'spec.template.spec.containers[0].readinessProbe.httpSocket.port 8080'
+      # - yq3 n 'spec.template.spec.containers[0].readinessProbe.httpSocket.port' 8080
+      # - yq3 n 'spec.template.spec.containers[0].readinessProbe.httpSocket.port' 8080 | yq3 r - -j
+      # - kubectl get deployment jenkins -o yaml
+      - kubectl get deployment jenkins -o yaml | yq3 w - 'spec.template.spec.containers[*].readinessProbe.tcpSocket.port' $(kubectl get deployment jenkins -o yaml | yq3 r - 'spec.template.spec.containers[0].readinessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].readinessProbe' | kubectl apply -f -
+      - kubectl rollout status deployment jenkins
+      - kubectl get deployment jenkins -o yaml | yq3 w - 'spec.template.spec.containers[*].livenessProbe.tcpSocket.port' $(kubectl get deployment jenkins -o yaml | yq3 r - 'spec.template.spec.containers[0].livenessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].livenessProbe' | kubectl apply -f -
+      - kubectl rollout status deployment jenkins
+      - kubectl get pods -o wide
+      # - kubectl get deployment jenkins -o yaml | yq3 w - 'spec.template.spec.containers[*].readinessProbe.tcpSocket.port' 8080 | yq3 r - -PC
+
   lab:
     run:
-      - task: lab-create
+      - task: lab-kind
       - task: lab-jenkins
+      - task: lab-patch
