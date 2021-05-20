@@ -1,0 +1,101 @@
+---
+interpreter: bash -c
+options:
+  # cli tools
+  kind:
+    default: gobin -run sigs.k8s.io/kind@v0.11.0
+
+  # node images
+  image-v1.21:
+    default: v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
+  image-v1.20:
+    default: v1.20.7@sha256:e645428988191fc824529fd0bb5c94244c12401cf5f5ea3bd875eb0a787f0fe9
+  image-v1.19:
+    default: v1.19.11@sha256:7664f21f9cb6ba2264437de0eb3fe99f201db7a3ac72329547ec4373ba5f5911
+  image-v1.18:
+    default: v1.18.19@sha256:530378628c7c518503ade70b1df698b5de5585dcdba4f349328d986b8849b1ee
+  image-v1.17:
+    default: v1.17.17@sha256:c581fbf67f720f70aaabc74b44c2332cc753df262b6c0bca5d26338492470c17
+  image-v1.16:
+    default: v1.16.15@sha256:430c03034cd856c1f1415d3e37faf35a3ea9c5aaa2812117b79e6903d1fc9651
+  image-v1.15:
+    default: v1.15.12@sha256:8d575f056493c7778935dd855ded0e95c48cb2fab90825792e8fc9af61536bf9
+  image-v1.14:
+    default: v1.14.10@sha256:6033e04bcfca7c5f2a9c4ce77551e1abf385bcd2709932ec2f6a9c8c0aff6d4f
+
+tasks:
+  create:
+    options:
+      name:
+        usage: cluster name
+        short: 'n'
+        default: kind
+      k8s:
+        usage: kubernetes version
+        short: k
+        default: v1.21
+        values:
+          - v1.21
+          - v1.20
+          - v1.19
+          - v1.18
+          - v1.17
+          - v1.16
+          - v1.15
+          - v1.14
+      registry:
+        default: docker.io/kindest/node
+      # image:
+      #   usage: node image
+      #   short: i
+      #   default: ${registry}:${image-${k8s}}
+      wait:
+        default: 0s
+      retain:
+        default: false
+      kubeconfig:
+        default: $HOME/.kube/config
+        environment: KUBECONFIG
+
+    run:
+      - set-environment:
+          KIND_CLUSTER_NAME: ${name}
+          KIND_CLUSTER_VERSION: ${k8s}
+    
+          # KIND_CLUSTER_IMAGE_v1.21: ${image-v1.21}
+          # KIND_CLUSTER_IMAGE_v1.20: ${image-v1.20}
+          # KIND_CLUSTER_IMAGE_DEFAULT: $KIND_CLUSTER_IMAGE_v1.21
+          KIND_CLUSTER_IMAGE: ${registry}:v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
+          KIND_CLUSTER_RETAIN: ${retain}
+          KIND_CLUSTER_WAIT: ${wait}
+          KIND_CLUSTER_KUBECONFIG: ${kubeconfig}
+
+      - docker pull $KIND_CLUSTER_IMAGE
+      - |
+          cat > /tmp/kindcluster.yaml <<-------
+          ---
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          name: ${name}
+          networking:
+            # apiServerAddress: "127.0.0.1"
+            # apiServerPort: 6443
+
+            # ipFamily: ipv4
+            # ipFamily: ipv6
+            # ipFamily: dual
+            # podSubnet: "10.244.0.0/16"
+            # serviceSubnet: "10.96.0.0/12"
+            # disableDefaultCNI: true
+            
+            # kubeProxyMode: ipvs
+            # kubeProxyMode:iptables
+            # kubeProxyMode: none
+            
+            ipFamily: dual
+            nodes:
+            - role: control-plane
+            - role: worker
+          ------
+      - yq3 r /tmp/kindcluster.yaml --stripComments -PC
+      - ${kind} create cluster --image $KIND_CLUSTER_IMAGE --kubeconfig $KIND_CLUSTER_KUBECONFIG --retain $KIND_CLUSTER_RETAIN --wait $KIND_CLUSTER_WAIT --config /tmp/kindcluster.yaml
