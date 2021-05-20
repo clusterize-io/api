@@ -4,6 +4,8 @@ options:
   # cli tools
   kind:
     default: gobin -run sigs.k8s.io/kind@v0.11.0
+  yq3:
+    default: gobin -run github.com/mikefarah/yq/v3@3.4.0
 
   # node images
   image-v1.21:
@@ -24,6 +26,65 @@ options:
     default: v1.14.10@sha256:6033e04bcfca7c5f2a9c4ce77551e1abf385bcd2709932ec2f6a9c8c0aff6d4f
 
 tasks:
+  run:
+    options:
+      gobin:
+        default:
+          command: cd $(go env GOBIN) && pwd
+    args:
+      pkg:
+        usage: pkg
+      cmd:
+        usage: cmd
+
+    run:
+      - set-environment:
+          GOBIN: ${gobin}
+      - go install github.com/myitcv/gobin@v0.0.14
+      - $GOBIN/gobin -run ${pkg} ${cmd}
+
+  cli-yq3:
+    args:
+      cmd:
+        usage: command
+    run:
+      - task:
+          name: run
+          args:
+            - github.com/mikefarah/yq/v3@3.4.0
+            - ${cmd}
+
+  cli-kind:
+    args:
+      cmd:
+        usage: command
+    run:
+      - task:
+          name: run
+          args:
+            - sigs.k8s.io/kind@v0.11.0
+            - ${cmd}
+
+
+  images:
+    args:
+      grep:
+        usage: grep string
+    run:
+      - |
+          cat <<------- | grep '${grep}'
+          docker.io/kindest/node:v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
+          docker.io/kindest/node:v1.20.7@sha256:e645428988191fc824529fd0bb5c94244c12401cf5f5ea3bd875eb0a787f0fe9
+          docker.io/kindest/node:v1.19.11@sha256:7664f21f9cb6ba2264437de0eb3fe99f201db7a3ac72329547ec4373ba5f5911
+          docker.io/kindest/node:v1.18.19@sha256:530378628c7c518503ade70b1df698b5de5585dcdba4f349328d986b8849b1ee
+          docker.io/kindest/node:v1.17.17@sha256:c581fbf67f720f70aaabc74b44c2332cc753df262b6c0bca5d26338492470c17
+          docker.io/kindest/node:v1.16.15@sha256:430c03034cd856c1f1415d3e37faf35a3ea9c5aaa2812117b79e6903d1fc9651
+          docker.io/kindest/node:v1.15.12@sha256:8d575f056493c7778935dd855ded0e95c48cb2fab90825792e8fc9af61536bf9
+          docker.io/kindest/node:v1.14.10@sha256:6033e04bcfca7c5f2a9c4ce77551e1abf385bcd2709932ec2f6a9c8c0aff6d4f
+          ------
+
+
+
   create:
     options:
       name:
@@ -34,68 +95,149 @@ tasks:
         usage: kubernetes version
         short: k
         default: v1.21
-        values:
-          - v1.21
-          - v1.20
-          - v1.19
-          - v1.18
-          - v1.17
-          - v1.16
-          - v1.15
-          - v1.14
-      registry:
-        default: docker.io/kindest/node
-      # image:
-      #   usage: node image
-      #   short: i
-      #   default: ${registry}:${image-${k8s}}
+      image:
+        usage: node image
+        short: i
+        default:
+          command: tusk images ${k8s}
       wait:
-        default: 0s
-      retain:
-        default: false
-      kubeconfig:
-        default: $HOME/.kube/config
-        environment: KUBECONFIG
-
+        default: 60s
+      networking.ipFamily:
+        default: ipv4
+        values:
+          - ipv4
+          - ipv6
+          - dual
+      networking.kubeProxyMode:
+        default: iptables
+        values:
+          - iptables
+          - ipvs
+          - none
+      networking.disableDefaultCNI:
+        default: 'false'
+        values:
+          - 'true'
+          - 'false'
+      networking.podSubnet:
+        default: '10.244.0.0/16'
+      networking.serviceSubnet:
+        default: '10.96.0.0/12'
     run:
-      - set-environment:
-          KIND_CLUSTER_NAME: ${name}
-          KIND_CLUSTER_VERSION: ${k8s}
-    
-          # KIND_CLUSTER_IMAGE_v1.21: ${image-v1.21}
-          # KIND_CLUSTER_IMAGE_v1.20: ${image-v1.20}
-          # KIND_CLUSTER_IMAGE_DEFAULT: $KIND_CLUSTER_IMAGE_v1.21
-          KIND_CLUSTER_IMAGE: ${registry}:v1.21.1@sha256:fae9a58f17f18f06aeac9772ca8b5ac680ebbed985e266f711d936e91d113bad
-          KIND_CLUSTER_RETAIN: ${retain}
-          KIND_CLUSTER_WAIT: ${wait}
-          KIND_CLUSTER_KUBECONFIG: ${kubeconfig}
-
-      - docker pull $KIND_CLUSTER_IMAGE
+      - task: delete
+      - docker pull ${image}
       - |
           cat > /tmp/kindcluster.yaml <<-------
           ---
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
-          name: ${name}
           networking:
-            # apiServerAddress: "127.0.0.1"
-            # apiServerPort: 6443
-
-            # ipFamily: ipv4
-            # ipFamily: ipv6
-            # ipFamily: dual
-            # podSubnet: "10.244.0.0/16"
-            # serviceSubnet: "10.96.0.0/12"
-            # disableDefaultCNI: true
-            
-            # kubeProxyMode: ipvs
-            # kubeProxyMode:iptables
-            # kubeProxyMode: none
-            
-            ipFamily: dual
-            nodes:
-            - role: control-plane
-            - role: worker
+            apiServerAddress: '0.0.0.0'
+            apiServerPort: 6443
+            podSubnet: ${networking.podSubnet}
+            serviceSubnet: ${networking.serviceSubnet}
+            disableDefaultCNI: ${networking.disableDefaultCNI}
+            kubeProxyMode: ${networking.kubeProxyMode}
+            ipFamily: ${networking.ipFamily}
+          nodes:
+          - role: control-plane
+          - role: worker
           ------
-      - yq3 r /tmp/kindcluster.yaml --stripComments -PC
-      - ${kind} create cluster --image $KIND_CLUSTER_IMAGE --kubeconfig $KIND_CLUSTER_KUBECONFIG --retain $KIND_CLUSTER_RETAIN --wait $KIND_CLUSTER_WAIT --config /tmp/kindcluster.yaml
+      - ${yq3} r /tmp/kindcluster.yaml --stripComments -PC
+      - sleep 2
+      - ${kind} create cluster --name ${name} --image ${image} --wait ${wait} --config /tmp/kindcluster.yaml
+      - task: get
+      # - task: shell
+
+  delete:
+    run:
+      - ${kind} delete clusters --all
+  
+  apply:
+    run:
+      - task: delete
+      - task: create
+  
+  get:
+    run:
+      - kubectl get nodes -o wide
+      - kubectl get pods -A
+  
+  shell:
+    run:
+      - docker exec -it kind-control-plane bash
+  
+  test:
+    run:
+      # - tusk cli-yq3 'n ok.cool yhatzee' | tusk cli-yq3 'r - -PC'
+      # - task: delete
+      # - task: create
+      # - tusk create --networking.kubeProxyMode ipvs
+      # - tusk create -k v1.16
+
+  lab-create:
+    run:
+      - task:
+          name: create
+          options:
+            k8s: v1.21
+  
+  lab-jenkins:
+    run:
+      - kubectl delete deployment jenkins --wait || true
+      - kubectl create deployment jenkins --image docker.io/jenkins/jenkins:latest --port 8080 --replicas 3 --dry-run -o yaml | yq3 r - -PC
+      - |
+          kubectl apply -f - <<-------
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            labels:
+              app: jenkins
+            name: jenkins
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: jenkins
+            template:
+              metadata:
+                labels:
+                  app: jenkins
+              spec:
+                containers:
+                - image: docker.io/jenkins/jenkins:latest
+                  name: jenkins
+                  ports:
+                  - containerPort: 8080
+                  # If you'd like your container to be killed and restarted if a probe fails, then specify a liveness probe, and specify a restartPolicy of Always or OnFailure.
+
+
+                  # livenessProbe:
+                  #   # initialDelaySeconds: 10
+                  #   # periodSeconds: 5
+                  #   # successThreshold: 1
+                  #   # failureThreshold: 12
+                  #   httpGet:
+                  #     path: /
+                  #     port: 8080
+                  readinessProbe:
+                    initialDelaySeconds: 5
+                    periodSeconds: 5
+                    httpGet:
+                      path: /login
+                      port: 8080
+                  # startupProbe:
+                  #   httpGet:
+                  #     path: /
+                  #     port: 8080
+                  #   failureThreshold: 30
+                  #   periodSeconds: 10
+          ------
+      - kubectl rollout status deployment jenkins
+      - kubectl get pods -o wide
+
+  lab:
+    run:
+      - task: lab-create
+      - task: lab-jenkins
