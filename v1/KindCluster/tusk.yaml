@@ -180,7 +180,7 @@ tasks:
       - task:
           name: create
           options:
-            k8s: v1.21
+            k8s: v1.20
   
   lab-jenkins:
     run:
@@ -228,9 +228,40 @@ tasks:
                       port: 8080
                     # tcpSocket:
                     #   port: 8080
-
           ------
       - kubectl rollout status deployment jenkins
+      - |
+          kubectl apply -f - <<-------
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            labels:
+              app: nginx
+            name: nginx
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: nginx
+            template:
+              metadata:
+                labels:
+                  app: nginx
+              spec:
+                containers:
+                - image: nginx:latest
+                  name: nginx
+                  ports:
+                  - containerPort: 80
+                  readinessProbe:
+                    httpGet:
+                      port: 80
+                  livenessProbe:
+                    httpGet:
+                      port: 80
+          ------
+      - kubectl rollout status deployment nginx
       - kubectl get pods -o wide
 
   lab-patch:
@@ -239,12 +270,18 @@ tasks:
       # - yq3 n 'spec.template.spec.containers[0].readinessProbe.httpSocket.port' 8080
       # - yq3 n 'spec.template.spec.containers[0].readinessProbe.httpSocket.port' 8080 | yq3 r - -j
       # - kubectl get deployment jenkins -o yaml
-      - kubectl get deployment jenkins -o yaml | yq3 w - 'spec.template.spec.containers[*].readinessProbe.tcpSocket.port' $(kubectl get deployment jenkins -o yaml | yq3 r - 'spec.template.spec.containers[0].readinessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].readinessProbe' | kubectl apply -f -
-      - kubectl rollout status deployment jenkins
-      - kubectl get deployment jenkins -o yaml | yq3 w - 'spec.template.spec.containers[*].livenessProbe.tcpSocket.port' $(kubectl get deployment jenkins -o yaml | yq3 r - 'spec.template.spec.containers[0].livenessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].livenessProbe' | kubectl apply -f -
-      - kubectl rollout status deployment jenkins
+      - set-environment:
+          DEPLOYMENT: jenkins
+      - kubectl get deployment $DEPLOYMENT -o yaml | yq3 w - 'spec.template.spec.containers[*].readinessProbe.tcpSocket.port' $(kubectl get deployment $DEPLOYMENT -o yaml | yq3 r - 'spec.template.spec.containers[0].readinessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].readinessProbe' | kubectl apply -f - && kubectl rollout status deployment $DEPLOYMENT
+      - kubectl get deployment $DEPLOYMENT -o yaml | yq3 w - 'spec.template.spec.containers[*].livenessProbe.tcpSocket.port' $(kubectl get deployment $DEPLOYMENT -o yaml | yq3 r - 'spec.template.spec.containers[0].livenessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].livenessProbe' | kubectl apply -f - && kubectl rollout status deployment $DEPLOYMENT
+
+      - set-environment:
+          DEPLOYMENT: nginx
+      - kubectl get deployment $DEPLOYMENT -o yaml | yq3 w - 'spec.template.spec.containers[*].readinessProbe.tcpSocket.port' $(kubectl get deployment $DEPLOYMENT -o yaml | yq3 r - 'spec.template.spec.containers[0].readinessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].readinessProbe' | kubectl apply -f - && kubectl rollout status deployment $DEPLOYMENT
+      - kubectl get deployment $DEPLOYMENT -o yaml | yq3 w - 'spec.template.spec.containers[*].livenessProbe.tcpSocket.port' $(kubectl get deployment $DEPLOYMENT -o yaml | yq3 r - 'spec.template.spec.containers[0].livenessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].livenessProbe' | kubectl apply -f - && kubectl rollout status deployment $DEPLOYMENT
+
       - kubectl get pods -o wide
-      # - kubectl get deployment jenkins -o yaml | yq3 w - 'spec.template.spec.containers[*].readinessProbe.tcpSocket.port' 8080 | yq3 r - -PC
+      - kubectl get deployments -o yaml | yq3 r - -PC
 
   lab:
     run:
