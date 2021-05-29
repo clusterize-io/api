@@ -1,0 +1,151 @@
+      # - |
+      #     cat >> tf/main.tf <<-------
+      #     resource "vsphere_virtual_machine" "${name}-esxi-70" {
+      #       name = "${name}-esxi-70"
+      #       num_cpus = 2
+      #       memory = 4096
+      #       resource_pool_id = data.vsphere_resource_pool.pool.id
+      #       datastore_id = data.vsphere_datastore.datastore.id
+      #       datacenter_id = data.vsphere_datacenter.datacenter.id
+      #       host_system_id = data.vsphere_host.host.id
+      #       wait_for_guest_net_timeout = 0
+      #       wait_for_guest_ip_timeout  = 0
+      #       network_interface {
+      #         network_id   = data.vsphere_network.network.id
+      #       }
+      #       ovf_deploy {
+      #         remote_ovf_url   = "https://download3.vmware.com/software/vmw-tools/nested-esxi/Nested_ESXi7.0u2a_Appliance_Template_v1.ova"
+      #       }
+      #       vapp {
+      #         properties = {
+      #           "guestinfo.hostname" = "${name}-esxi-70",
+      #           "guestinfo.ipaddress" = "",
+      #           "guestinfo.netmask" = "",
+      #           "guestinfo.gateway" = "",
+      #           "guestinfo.dns" = "",
+      #           "guestinfo.domain" = "",
+      #           "guestinfo.ntp" = "",
+      #           "guestinfo.password" = "VMware1!"
+      #         }
+      #       }
+      #     }
+      #     ------
+      # - |
+      #     cat >> tf/main.tf <<-------
+      #     resource "vsphere_virtual_machine" "${name}-groovy" {
+      #       name = "${name}-groovy"
+      #       num_cpus = 2
+      #       memory = 4096
+      #       resource_pool_id = data.vsphere_resource_pool.pool.id
+      #       datastore_id = data.vsphere_datastore.datastore.id
+      #       datacenter_id = data.vsphere_datacenter.datacenter.id
+      #       host_system_id = data.vsphere_host.host.id
+      #       wait_for_guest_net_timeout = 0
+      #       wait_for_guest_ip_timeout  = 0
+      #       network_interface {
+      #         network_id   = data.vsphere_network.network.id
+      #       }
+      #       ovf_deploy {
+      #         remote_ovf_url   = "https://cloud-images.ubuntu.com/groovy/current/groovy-server-cloudimg-amd64.ova"
+      #       }
+      #       vapp {
+      #         properties = {
+      #           "instance-id" = "id-ovf"
+      #           "hostname" = "${name}-groovy"
+      #           "public-keys" = "${pubkey}"
+      #         }
+      #       }
+      #     }
+      #     ------
+      # - |
+      #     cat >> tf/main.tf <<-------
+      #     resource "vsphere_virtual_machine" "${name}-focal" {
+      #       name = "${name}-focal"
+      #       num_cpus = 2
+      #       memory = 4096
+      #       resource_pool_id = data.vsphere_resource_pool.pool.id
+      #       datastore_id = data.vsphere_datastore.datastore.id
+      #       datacenter_id = data.vsphere_datacenter.datacenter.id
+      #       host_system_id = data.vsphere_host.host.id
+      #       wait_for_guest_net_timeout = 0
+      #       wait_for_guest_ip_timeout  = 0
+      #       network_interface {
+      #         network_id   = data.vsphere_network.network.id
+      #       }
+      #       ovf_deploy {
+      #         remote_ovf_url   = "https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.ova"
+      #       }
+      #       vapp {
+      #         properties = {
+      #           "instance-id" = "id-ovf"
+      #           "hostname" = "${name}-focal"
+      #           "public-keys" = "${pubkey}"
+      #         }
+      #       }
+      #     }
+      #     ------
+
+      # - |
+      #     cat >> tf/main.tf <<-------
+      #     resource "vsphere_virtual_machine" "${name}-bionic" {
+      #       name = "${name}-bionic"
+      #       num_cpus = 2
+      #       memory = 4096
+      #       resource_pool_id = data.vsphere_resource_pool.pool.id
+      #       datastore_id = data.vsphere_datastore.datastore.id
+      #       datacenter_id = data.vsphere_datacenter.datacenter.id
+      #       host_system_id = data.vsphere_host.host.id
+      #       wait_for_guest_net_timeout = 0
+      #       wait_for_guest_ip_timeout  = 0
+      #       enable_disk_uuid = true
+      #       nested_hv_enabled =true
+      #       network_interface {
+      #         network_id   = data.vsphere_network.network.id
+      #       }
+      #       ovf_deploy {
+      #         remote_ovf_url   = "https://cloud-images.ubuntu.com/bionic/current/bionic-server-cloudimg-amd64.ova"
+      #         disk_provisioning = "thin"
+      #       }
+      #       vapp {
+      #         properties = {
+      #           "instance-id" = "id-ovf"
+      #           "hostname" = "${name}-bionic"
+      #           "public-keys" = "${pubkey}"
+      #         }
+      #       }
+      #     }
+      #     ------
+
+
+      # - |
+      #     cat >> tf/main.tf <<-------
+      #     resource "vsphere_virtual_machine" "${name}-focal" {
+      #       name = "${name}-focal"
+      #       num_cpus = 2
+      #       memory = 4096
+      #       resource_pool_id = data.vsphere_resource_pool.pool.id
+      #       datastore_id = data.vsphere_datastore.datastore.id
+      #       datacenter_id = data.vsphere_datacenter.datacenter.id
+      #       host_system_id = data.vsphere_host.host.id
+      #       wait_for_guest_net_timeout = 0
+      #       wait_for_guest_ip_timeout  = 0
+      #       enable_disk_uuid = true
+      #       nested_hv_enabled =true
+      #       network_interface {
+      #         network_id   = data.vsphere_network.network.id
+      #       }
+      #       ovf_deploy {
+      #         remote_ovf_url   = "https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.ova"
+      #         disk_provisioning = "thin"
+      #       }
+      #       vapp {
+      #         properties = {
+      #           "instance-id" = "id-ovf"
+      #           "hostname" = "${name}-focal"
+      #           "public-keys" = "${pubkey}"
+      #         }
+      #       }
+      #     }
+      #     ------
+
+
