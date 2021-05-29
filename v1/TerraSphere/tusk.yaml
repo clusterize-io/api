@@ -30,18 +30,18 @@ tasks:
 
   test:
     run:
-      - ${govc}
-    # options:
-    #   file:
-    #     default: ~/.cz/secrets/TerraSphere.yaml
-    # run:
-    #   - cat ${file} | yq e '.data' -
-    #   - cat ${file} | yq e '.data.user' - | base64 -d
-    #   - cat ${file} | yq e '.data.pass' - | base64 -d
-    #   - cat ${file} | yq e '.data.server' - | base64 -d
+      - task: create
+
+  apply:
+    run:
+      - task: delete
+      - task: create
 
   create:
     options:
+      name:
+        default: my-fedora
+
       secrets:
         default: ~/.cz/secrets/TerraSphere.yaml
       user:
@@ -59,7 +59,104 @@ tasks:
           GOVC_PASSWORD: ${pass}
           GOVC_URL: ${server}
           GOVC_INSECURE: 1
-      - ${govc} about
+      - govc about
+      # - rm -rf tf
+      - mkdir -p tf
+      - set-environment:
+          TF_VAR_vsphere_user: ${user}
+          TF_VAR_vsphere_password: ${pass}
+          TF_VAR_vsphere_server: ${server}
+      - |
+          cat <<------- > tf/main.tf
+          variable "vsphere_user" {
+            type = string
+          }
+          variable "vsphere_password" {
+            type = string
+          }
+          variable "vsphere_server" {
+            type = string
+          }
+          provider "vsphere" {
+            user           = var.vsphere_user
+            password       = var.vsphere_password
+            vsphere_server = var.vsphere_server
+            allow_unverified_ssl = true
+          }
+          ------
+
+      - |
+          cat <<------- >> tf/main.tf && cd tf && terraform init && terraform plan && terraform apply -auto-approve
+
+          data "vsphere_datacenter" "dc" {
+            name = "dc"
+          }
+          data "vsphere_datastore" "datastore" {
+            name          = "vcsa-nvme"
+            datacenter_id = data.vsphere_datacenter.dc.id
+          }
+          data "vsphere_resource_pool" "pool" {
+            name          = "ryzen.vmwlab.io/Resources"
+            datacenter_id = data.vsphere_datacenter.dc.id
+          }
+          data "vsphere_network" "network" {
+            name          = "VM Network"
+            datacenter_id = data.vsphere_datacenter.dc.id
+          }
+          resource "vsphere_virtual_machine" "vm" {
+            name             = "${name}"
+            resource_pool_id = data.vsphere_resource_pool.pool.id
+            datastore_id     = data.vsphere_datastore.datastore.id
+            num_cpus = 2
+            memory   = 2048
+            # https://code.vmware.com/apis/358/doc/vim.vm.GuestOsDescriptor.GuestOsIdentifier.html
+            guest_id = "ubuntu64Guest"
+            network_interface {
+              network_id = data.vsphere_network.network.id
+            }
+            disk {
+              label = "disk0"
+              size  = 40
+            }
+            firmware = "efi"
+            wait_for_guest_net_routable = true
+            # hv_mode = "hvAuto"
+            cdrom {
+              datastore_id = data.vsphere_datastore.datastore.id
+              path         = "ISO/ubuntu-21.04-desktop-amd64.iso"
+            }
+          }
+
+          ------
+
+      # - govc find vm
+      - govc vm.info ${name}
+
+
+
+  delete:
+    options:
+      secrets:
+        default: ~/.cz/secrets/TerraSphere.yaml
+      user:
+        default:
+          command: yq e '.data.user' ${secrets} | base64 -d
+      pass:
+        default:
+          command: yq e '.data.pass' ${secrets} | base64 -d
+      server:
+        default:
+          command: yq e '.data.server' ${secrets} | base64 -d
+    run:
+      - mkdir -p tf
+      - set-environment:
+          TF_VAR_vsphere_user: ${user}
+          TF_VAR_vsphere_password: ${pass}
+          TF_VAR_vsphere_server: ${server}
+      - cd tf && terraform destroy --auto-approve
+
+
+
 
 ---
   convert:
@@ -68,102 +165,3 @@ tasks:
       - cat /tmp/in.yaml | yq e -
       - sleep 2
       - echo 'yamldecode(file("/tmp/in.yaml"))' | terraform console
-
-  install:
-    run:
-      #- go install github.com/hashicorp/terraform@v0.15.4
-      - ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go build . && go install && terraform version
-      - go install sigs.k8s.io/kind@v0.11.0 && kind version
-
-  delete:
-    run:
-      - cd tf && terraform destroy -auto-approve || true
-      - kind delete clusters --all
-
-  apply:
-    run:
-      - task: delete
-      - task: 
-          name: create
-          options:
-            name: yhatzee
-            k8s: v1.21.1
-            # k8s: v1.20.7
-            # k8s: v1.19.11
-      - task: get
-  
-  get:
-    run:
-      - kubectl get nodes -o wide
-      - kubectl get pods -A
-
-  create:
-    options:
-      name:
-        short: 'n'
-        required: true
-      k8s:
-        usage: kubernetes version
-        short: k
-        values:
-          - v1.21.1
-          - v1.20.7
-          - v1.19.11
-          - v1.18.19
-          - v1.17.17
-          - v1.16.15
-          - v1.15.12
-          - v1.14.10
-    run:
-
-      - rm -rf tf && mkdir -p tf
-      - |
-          cat <<------- > tf/main.tf && cd tf && terraform init && terraform plan && terraform apply -auto-approve
-
-          provider "vsphere" {
-            user           = var.vsphere_user
-            password       = var.vsphere_password
-            vsphere_server = var.vsphere_server
-
-            # If you have a self-signed cert
-            allow_unverified_ssl = true
-          }
-
-          data "vsphere_datacenter" "dc" {
-            name = "dc1"
-          }
-
-          data "vsphere_datastore" "datastore" {
-            name          = "datastore1"
-            datacenter_id = data.vsphere_datacenter.dc.id
-          }
-
-          data "vsphere_resource_pool" "pool" {
-            name          = "cluster1/Resources"
-            datacenter_id = data.vsphere_datacenter.dc.id
-          }
-
-          data "vsphere_network" "network" {
-            name          = "public"
-            datacenter_id = data.vsphere_datacenter.dc.id
-          }
-
-          resource "vsphere_virtual_machine" "vm" {
-            name             = "terraform-test"
-            resource_pool_id = data.vsphere_resource_pool.pool.id
-            datastore_id     = data.vsphere_datastore.datastore.id
-
-            num_cpus = 2
-            memory   = 1024
-            guest_id = "other3xLinux64Guest"
-
-            network_interface {
-              network_id = data.vsphere_network.network.id
-            }
-
-            disk {
-              label = "disk0"
-              size  = 20
-            }
-          }
-          ------
