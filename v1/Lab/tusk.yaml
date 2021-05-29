@@ -1,5 +1,8 @@
 ---
 tasks:
+  setup:
+    run:
+      - pip3 install --user virt-lightning
   create:
     run:
       - cd ../

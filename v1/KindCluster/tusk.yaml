@@ -283,6 +283,48 @@ tasks:
       - kubectl get pods -o wide
       - kubectl get deployments -o yaml | yq3 r - -PC
 
+  lab-merge:
+    options:
+      name:
+        usage: name
+        required: true
+      probe:
+        usage: probe
+        required: true
+        values:
+          - httpGet
+          - tcpSocket
+    run:
+      - set-environment:
+          DEPLOYMENT: ${name}
+      - kubectl get deployment $DEPLOYMENT -o yaml | yq3 w - 'spec.template.spec.containers[*].readinessProbe.tcpSocket.port' $(kubectl get deployment $DEPLOYMENT -o yaml | yq3 r - 'spec.template.spec.containers[0].readinessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].readinessProbe' | kubectl apply -f - && kubectl rollout status deployment $DEPLOYMENT
+      - kubectl get deployment $DEPLOYMENT -o yaml | yq3 w - 'spec.template.spec.containers[*].livenessProbe.tcpSocket.port' $(kubectl get deployment $DEPLOYMENT -o yaml | yq3 r - 'spec.template.spec.containers[0].livenessProbe.httpGet.port') | yq3 d - 'spec.template.spec.containers[*].livenessProbe' | kubectl apply -f - && kubectl rollout status deployment $DEPLOYMENT
+      - kubectl get deployment ${name} -o yaml | yq3 r - -PC
+
+
+  lab-kustomize:
+    run:
+      # - kubectl get deployments -A -o yaml | yq3 r - -PC 
+      # - kubectl get deployments -A -o yaml | yq4 eval '.items | select(has("readinessProbe")) | .metadata' -
+      - kubectl get deployments -A -o yaml > /tmp/deployments.yaml
+      - |
+          cat > /tmp/kustomization.yaml <<-------
+          ---
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          resources:
+          - deployments.yaml
+          patchesStrategicMerge:
+          - |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                labels:
+                  yhatzee: ok
+          ------
+      - kustomize build /tmp | yq4 e -
+
+
   lab:
     run:
       - task: lab-kind
