@@ -14,17 +14,49 @@ tasks:
     run:
       #- go install github.com/hashicorp/terraform@v0.15.4
       - ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go build . && go install && terraform version
+      - go install sigs.k8s.io/kind@v0.11.0 && kind version
 
+  delete:
+    run:
+      - cd tf && terraform destroy -auto-approve || true
+
+  apply:
+    run:
+      - task: delete
+      - task: 
+          name: create
+          options:
+            name: yhatzee
+            k8s: v1.21.1
+      - task: get
+  
+  get:
+    run:
+      - kubectl get nodes -o wide
+      - kubectl get pods -A
 
   create:
     options:
       name:
         short: 'n'
         required: true
+      k8s:
+        usage: kubernetes version
+        short: k
+        values:
+          - v1.21.1
+          - v1.20.7
+          - v1.19.11
+          - v1.18.19
+          - v1.17.17
+          - v1.16.15
+          - v1.15.12
+          - v1.14.10
     run:
       - task: install
       - rm -rf tf
       - mkdir -p tf
+      - docker pull kindest/node:${k8s}
       - |
           cat > tf/main.tf <<-------
           terraform {
@@ -47,15 +79,17 @@ tasks:
 
               node {
                 role = "control-plane"
+                image = "kindest/node:${k8s}"
               }
 
               node {
                 role = "worker"
-                image = "kindest/node:v1.19.1"
+                image = "kindest/node:${k8s}"
               }
 
               node {
                 role = "worker"
+                image = "kindest/node:${k8s}"
               }
             }
           }
