@@ -34,7 +34,7 @@ tasks:
 
   apply:
     run:
-      - task: delete
+      # - task: delete
       - task: create
 
   create:
@@ -54,12 +54,12 @@ tasks:
         default:
           command: yq e '.data.server' ${secrets} | base64 -d
     run:
-      - set-environment:
-          GOVC_USERNAME: ${user}
-          GOVC_PASSWORD: ${pass}
-          GOVC_URL: ${server}
-          GOVC_INSECURE: 1
-      - govc about
+      # - set-environment:
+      #     GOVC_USERNAME: ${user}
+      #     GOVC_PASSWORD: ${pass}
+      #     GOVC_URL: ${server}
+      #     GOVC_INSECURE: 1
+      # - govc about
       # - rm -rf tf
       - mkdir -p tf
       - set-environment:
@@ -86,8 +86,7 @@ tasks:
           ------
 
       - |
-          cat <<------- >> tf/main.tf && cd tf && terraform init && terraform plan && terraform apply -auto-approve
-
+          cat <<------- >> tf/main.tf
           data "vsphere_datacenter" "dc" {
             name = "dc"
           }
@@ -99,37 +98,106 @@ tasks:
             name          = "ryzen.vmwlab.io/Resources"
             datacenter_id = data.vsphere_datacenter.dc.id
           }
+          data "vsphere_host" "host" {
+            name          = "ryzen.vmwlab.io"
+            datacenter_id = data.vsphere_datacenter.dc.id
+          }
           data "vsphere_network" "network" {
             name          = "VM Network"
             datacenter_id = data.vsphere_datacenter.dc.id
           }
-          resource "vsphere_virtual_machine" "vm" {
-            name             = "${name}"
-            resource_pool_id = data.vsphere_resource_pool.pool.id
-            datastore_id     = data.vsphere_datastore.datastore.id
-            num_cpus = 2
-            memory   = 2048
-            # https://code.vmware.com/apis/358/doc/vim.vm.GuestOsDescriptor.GuestOsIdentifier.html
-            guest_id = "ubuntu64Guest"
-            network_interface {
-              network_id = data.vsphere_network.network.id
-            }
-            disk {
-              label = "disk0"
-              size  = 40
-            }
-            firmware = "efi"
-            wait_for_guest_net_routable = true
-            # hv_mode = "hvAuto"
-            cdrom {
-              datastore_id = data.vsphere_datastore.datastore.id
-              path         = "ISO/ubuntu-21.04-desktop-amd64.iso"
-            }
-          }
-
           ------
 
-      # - govc find vm
+      # iso from scratch
+      # - |
+      #     cat <<------- >> tf/main.tf && cd tf && terraform init && terraform plan && terraform apply -auto-approve
+
+      #     data "vsphere_datacenter" "dc" {
+      #       name = "dc"
+      #     }
+      #     data "vsphere_datastore" "datastore" {
+      #       name          = "vcsa-nvme"
+      #       datacenter_id = data.vsphere_datacenter.dc.id
+      #     }
+      #     data "vsphere_resource_pool" "pool" {
+      #       name          = "ryzen.vmwlab.io/Resources"
+      #       datacenter_id = data.vsphere_datacenter.dc.id
+      #     }
+      #     data "vsphere_network" "network" {
+      #       name          = "VM Network"
+      #       datacenter_id = data.vsphere_datacenter.dc.id
+      #     }
+      #     resource "vsphere_virtual_machine" "vm" {
+      #       name             = "${name}"
+      #       resource_pool_id = data.vsphere_resource_pool.pool.id
+      #       datastore_id     = data.vsphere_datastore.datastore.id
+      #       num_cpus = 2
+      #       memory   = 2048
+      #       # https://code.vmware.com/apis/358/doc/vim.vm.GuestOsDescriptor.GuestOsIdentifier.html
+      #       guest_id = "ubuntu64Guest"
+      #       network_interface {
+      #         network_id = data.vsphere_network.network.id
+      #       }
+      #       disk {
+      #         label = "disk0"
+      #         size  = 40
+      #       }
+      #       firmware = "efi"
+      #       wait_for_guest_net_routable = true
+      #       # hv_mode = "hvAuto"
+      #       cdrom {
+      #         datastore_id = data.vsphere_datastore.datastore.id
+      #         path         = "ISO/ubuntu-21.04-desktop-amd64.iso"
+      #       }
+      #     }
+      #     ------
+
+      # from ova
+      - |
+          cat <<------- >> tf/main.tf
+          # resource "vsphere_virtual_machine" "vmFromLocalOvf" {
+          #   name                       = "vm1"
+          #   resource_pool_id           = data.vsphere_resource_pool.pool.id
+          #   datastore_id               = data.vsphere_datastore.datastore.id
+          #   host_system_id             = data.vsphere_host.host.id
+          #   wait_for_guest_net_timeout = 0
+          #   wait_for_guest_ip_timeout  = 0
+          #   datacenter_id              = data.vsphere_datacenter.dc.id
+          #   ovf_deploy {
+          #     local_ovf_path       = "Full Path to local ovf/ova file"
+          #     disk_provisioning    = "thin"
+          #     ip_protocol          = "IPV4"
+          #     ip_allocation_policy = "STATIC_MANUAL"
+          #     ovf_network_map = {
+          #       "ESX-port-1" = data.vsphere_network.network.id
+          #       "ESX-port-2" = data.vsphere_network.network.id
+          #     }
+          #   }
+          #   vapp {
+          #     properties = {
+          #       "guestinfo.tf.internal.id" = "42"
+          #     }
+          #   }
+          # }
+
+          resource "vsphere_virtual_machine" "vmFromRemoteOvf" {
+            name                       = "${name}"
+            resource_pool_id           = data.vsphere_resource_pool.pool.id
+            datastore_id               = data.vsphere_datastore.datastore.id
+            host_system_id             = data.vsphere_host.host.id
+            wait_for_guest_net_timeout = 0
+            wait_for_guest_ip_timeout  = 0
+            datacenter_id              = data.vsphere_datacenter.dc.id
+            # cdrom {
+            #   client_device = true
+            # }
+            ovf_deploy {
+              remote_ovf_url = "https://cloud-images.ubuntu.com/impish/current/impish-server-cloudimg-amd64.ova"
+            }
+          }
+          ------
+      - cd tf && rm -f .terraform.lock.hcl && rm -f terraform.tfstate && rm -rf .terraform && terraform init && terraform destroy -auto-approve
+      - cd tf && terraform init && terraform plan && terraform apply -auto-approve
       - govc vm.info ${name}
 
 
