@@ -1,0 +1,169 @@
+---
+options:
+  go-getter:
+    default: gobin -run github.com/hashicorp/go-getter/cmd/go-getter@v1.5.3
+  terraform:
+    default: ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go run .
+  govc:
+    default: go get -u github.com/vmware/govmomi/govc@v0.25.0 && go install github.com/vmware/govmomi/govc && govc
+
+    # default: gobin -run github.com/hashicorp/terraform@v0.15.4
+tasks:
+
+  config:
+    options:
+      user:
+        required: true
+      pass:
+        required: true
+      server:
+        required: true
+    run:
+      - mkdir -p ~/.cz/secrets
+      - |
+          kubectl create secret generic TerraSphere \
+            --from-literal user=${user} \
+            --from-literal pass=${pass} \
+            --from-literal server=${server} \
+            --dry-run=client -o yaml > ~/.cz/secrets/TerraSphere.yaml
+      - cat ~/.cz/secrets/TerraSphere.yaml | yq e -
+
+  test:
+    run:
+      - ${govc}
+    # options:
+    #   file:
+    #     default: ~/.cz/secrets/TerraSphere.yaml
+    # run:
+    #   - cat ${file} | yq e '.data' -
+    #   - cat ${file} | yq e '.data.user' - | base64 -d
+    #   - cat ${file} | yq e '.data.pass' - | base64 -d
+    #   - cat ${file} | yq e '.data.server' - | base64 -d
+
+  create:
+    options:
+      secrets:
+        default: ~/.cz/secrets/TerraSphere.yaml
+      user:
+        default:
+          command: yq e '.data.user' ${secrets} | base64 -d
+      pass:
+        default:
+          command: yq e '.data.pass' ${secrets} | base64 -d
+      server:
+        default:
+          command: yq e '.data.server' ${secrets} | base64 -d
+    run:
+      - set-environment:
+          GOVC_USERNAME: ${user}
+          GOVC_PASSWORD: ${pass}
+          GOVC_URL: ${server}
+          GOVC_INSECURE: 1
+      - ${govc} about
+
+---
+  convert:
+    run:
+      - kubectl create deployment jenkins --image jenkins/jenkins:latest --port 8080 --replicas 3 --dry-run=client -o yaml > /tmp/in.yaml
+      - cat /tmp/in.yaml | yq e -
+      - sleep 2
+      - echo 'yamldecode(file("/tmp/in.yaml"))' | terraform console
+
+  install:
+    run:
+      #- go install github.com/hashicorp/terraform@v0.15.4
+      - ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go build . && go install && terraform version
+      - go install sigs.k8s.io/kind@v0.11.0 && kind version
+
+  delete:
+    run:
+      - cd tf && terraform destroy -auto-approve || true
+      - kind delete clusters --all
+
+  apply:
+    run:
+      - task: delete
+      - task: 
+          name: create
+          options:
+            name: yhatzee
+            k8s: v1.21.1
+            # k8s: v1.20.7
+            # k8s: v1.19.11
+      - task: get
+  
+  get:
+    run:
+      - kubectl get nodes -o wide
+      - kubectl get pods -A
+
+  create:
+    options:
+      name:
+        short: 'n'
+        required: true
+      k8s:
+        usage: kubernetes version
+        short: k
+        values:
+          - v1.21.1
+          - v1.20.7
+          - v1.19.11
+          - v1.18.19
+          - v1.17.17
+          - v1.16.15
+          - v1.15.12
+          - v1.14.10
+    run:
+
+      - rm -rf tf && mkdir -p tf
+      - |
+          cat <<------- > tf/main.tf && cd tf && terraform init && terraform plan && terraform apply -auto-approve
+
+          provider "vsphere" {
+            user           = var.vsphere_user
+            password       = var.vsphere_password
+            vsphere_server = var.vsphere_server
+
+            # If you have a self-signed cert
+            allow_unverified_ssl = true
+          }
+
+          data "vsphere_datacenter" "dc" {
+            name = "dc1"
+          }
+
+          data "vsphere_datastore" "datastore" {
+            name          = "datastore1"
+            datacenter_id = data.vsphere_datacenter.dc.id
+          }
+
+          data "vsphere_resource_pool" "pool" {
+            name          = "cluster1/Resources"
+            datacenter_id = data.vsphere_datacenter.dc.id
+          }
+
+          data "vsphere_network" "network" {
+            name          = "public"
+            datacenter_id = data.vsphere_datacenter.dc.id
+          }
+
+          resource "vsphere_virtual_machine" "vm" {
+            name             = "terraform-test"
+            resource_pool_id = data.vsphere_resource_pool.pool.id
+            datastore_id     = data.vsphere_datastore.datastore.id
+
+            num_cpus = 2
+            memory   = 1024
+            guest_id = "other3xLinux64Guest"
+
+            network_interface {
+              network_id = data.vsphere_network.network.id
+            }
+
+            disk {
+              label = "disk0"
+              size  = 20
+            }
+          }
+          ------

@@ -6,9 +6,12 @@ options:
     default: ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go run .
     # default: gobin -run github.com/hashicorp/terraform@v0.15.4
 tasks:
-  # create:
-  #   run:
-  #     - ${terraform} version
+  convert:
+    run:
+      - kubectl create deployment jenkins --image jenkins/jenkins:latest --port 8080 --replicas 3 --dry-run=client -o yaml > /tmp/in.yaml
+      - cat /tmp/in.yaml | yq e -
+      - sleep 2
+      - echo 'yamldecode(file("/tmp/in.yaml"))' | terraform console
 
   install:
     run:
@@ -28,9 +31,9 @@ tasks:
           name: create
           options:
             name: yhatzee
-            # k8s: v1.21.1
+            k8s: v1.21.1
             # k8s: v1.20.7
-            k8s: v1.19.11
+            # k8s: v1.19.11
       - task: get
   
   get:
@@ -96,10 +99,9 @@ tasks:
           ------
       - cd tf && terraform init && terraform plan && terraform apply -auto-approve
 
+      - rm -rf tf && mkdir -p tf
       - |
-          rm -rf tf
-          mkdir -p tf
-          cat > tf/main.tf <<-------
+          cat <<------- > tf/main.tf && cd tf && terraform init && terraform plan && terraform apply -auto-approve
           provider "kubernetes-alpha" {
             config_path = "~/.kube/config"
           }
@@ -107,38 +109,42 @@ tasks:
             provider = kubernetes-alpha
             manifest = {
               "apiVersion" = "apps/v1"
-              "kind"       = "Deployment"
+              "kind" = "Deployment"
               "metadata" = {
+                "creationTimestamp" = null
                 "labels" = {
-                  "app" = "nginx"
+                  "app" = "jenkins"
                 }
-                "name"      = "nginx-deployment"
+                "name" = "jenkins"
                 "namespace" = "default"
               }
               "spec" = {
                 "replicas" = 3
                 "selector" = {
                   "matchLabels" = {
-                    "app" = "nginx"
+                    "app" = "jenkins"
                   }
                 }
+                "strategy" = {}
                 "template" = {
                   "metadata" = {
+                    "creationTimestamp" = null
                     "labels" = {
-                      "app" = "nginx"
+                      "app" = "jenkins"
                     }
                   }
                   "spec" = {
                     "containers" = [
                       {
-                        "image" = "nginx:1.14.2"
-                        "name"  = "nginx"
+                        "image" = "jenkins/jenkins:latest"
+                        "name" = "jenkins"
                         "ports" = [
                           {
-                            "containerPort" = 80
-                            "protocol"      = "TCP"
+                            "containerPort" = 8080
+                            "protocol" = "TCP"
                           },
                         ]
+                        "resources" = {}
                       },
                     ]
                   }
@@ -150,7 +156,5 @@ tasks:
                 "status.readyReplicas" = "3"
               }
             }
-
           }      
           ------
-      - cd tf && terraform init && terraform plan && terraform apply -auto-approve
