@@ -1,0 +1,12 @@
+---
+options:
+  go-getter:
+    default: gobin -run github.com/hashicorp/go-getter/cmd/go-getter@v1.5.3
+  terraform:
+    default: gobin -run github.com/hashicorp/terraform@v0.15.4
+
+tasks:
+  create:
+    run:
+      - ${go-getter} -h
+      - ${terraform}
