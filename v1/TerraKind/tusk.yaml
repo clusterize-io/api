@@ -1,0 +1,68 @@
+---
+options:
+  go-getter:
+    default: gobin -run github.com/hashicorp/go-getter/cmd/go-getter@v1.5.3
+  terraform:
+    default: ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go run .
+    # default: gobin -run github.com/hashicorp/terraform@v0.15.4
+tasks:
+  # create:
+  #   run:
+  #     - ${terraform} version
+
+  install:
+    run:
+      #- go install github.com/hashicorp/terraform@v0.15.4
+      - ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go build . && go install && terraform version
+
+
+  create:
+    options:
+      name:
+        short: 'n'
+        required: true
+    run:
+      - task: install
+      - rm -rf tf
+      - mkdir -p tf
+      - |
+          cat > tf/main.tf <<-------
+          terraform {
+            required_providers {
+              kind = {
+                version = "0.0.9"
+                source  = "kyma-incubator/kind"
+              }
+            }
+          }
+
+          provider "kind" {}
+
+          resource "kind_cluster" "default" {
+            name = "${name}"
+            wait_for_ready = true
+            kind_config {
+              kind = "Cluster"
+              api_version = "kind.x-k8s.io/v1alpha4"
+
+              node {
+                role = "control-plane"
+              }
+
+              node {
+                role = "worker"
+                image = "kindest/node:v1.19.1"
+              }
+
+              node {
+                role = "worker"
+              }
+            }
+          }
+
+          ------
+
+      - cd tf && terraform init
+      - cd tf && terraform plan
+      - sleep 2
+      - cd tf && terraform apply -auto-approve
