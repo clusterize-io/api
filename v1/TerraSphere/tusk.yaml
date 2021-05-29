@@ -188,17 +188,21 @@ tasks:
             wait_for_guest_net_timeout = 0
             wait_for_guest_ip_timeout  = 0
             datacenter_id              = data.vsphere_datacenter.dc.id
-            # cdrom {
-            #   client_device = true
-            # }
+            cdrom {
+              client_device = true
+            }
             ovf_deploy {
               remote_ovf_url = "https://cloud-images.ubuntu.com/impish/current/impish-server-cloudimg-amd64.ova"
             }
           }
           ------
-      - cd tf && rm -f .terraform.lock.hcl && rm -f terraform.tfstate && rm -rf .terraform && terraform init && terraform destroy -auto-approve
-      - cd tf && terraform init && terraform plan && terraform apply -auto-approve
-      - govc vm.info ${name}
+      # - cd tf && rm -f .terraform.lock.hcl && rm -f terraform.tfstate && rm -rf .terraform && 
+      - cd tf && terraform init
+      - cd tf && terraform plan
+      - cd tf && terraform destroy -auto-approve
+      # - terraform destroy -auto-approve
+      - cd tf && terraform apply -auto-approve
+      # - govc vm.info ${name}
 
 
 
