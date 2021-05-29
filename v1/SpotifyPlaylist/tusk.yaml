@@ -3,10 +3,115 @@ options:
   go-getter:
     default: gobin -run github.com/hashicorp/go-getter/cmd/go-getter@v1.5.3
   terraform:
-    default: gobin -run github.com/hashicorp/terraform@v0.15.4
-
+    default: ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go run .
+    # default: gobin -run github.com/hashicorp/terraform@v0.15.4
+  spotify-auth-proxy:
+    default: gobin -run github.com/conradludgate/terraform-provider-spotify/spotify_auth_proxy
 tasks:
-  create:
+  # create:
+  #   run:
+  #     - ${terraform} version
+
+  install:
     run:
-      - ${go-getter} -h
-      - ${terraform}
+      #- go install github.com/hashicorp/terraform@v0.15.4
+      - ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform && cd /tmp/terraform && go build . && go install && terraform version
+      - go install github.com/conradludgate/terraform-provider-spotify/spotify_auth_proxy@latest
+
+  setup:
+    options:
+      id:
+        default:
+          command: cat ~/.cz/secrets/SpotifyPlaylist.yaml | yq3 r - data.id | base64 -d
+      secret:
+        default:
+          command: cat ~/.cz/secrets/SpotifyPlaylist.yaml | yq3 r - data.secret | base64 -d
+    run:
+      # - firefox 'https://developer.spotify.com/dashboard/'
+      # - mkdir -p ~/.cz/secrets
+      # - kubectl create secret generic spotify-playlist --from-literal id=${id} --from-literal secret=${secret} --dry-run=client -o yaml > ~/.cz/secrets/spotify-playlist.yaml
+      # - cat ~/.cz/secrets/spotify-playlist.yaml | yq3 r - -PC
+      - set-environment:
+          SPOTIFY_CLIENT_REDIRECT_URI: http://localhost:27228/spotify_callback
+          SPOTIFY_CLIENT_ID: ${id}
+          SPOTIFY_CLIENT_SECRET: ${secret}
+      - ${spotify-auth-proxy}
+      # - firefox 'http://localhost:27228/authorize?token=TBD'
+
+  login:
+    options:
+      key:
+        default:
+          value: TBD
+      token:
+        default:
+          value: TBD
+    run:
+      - firefox --new-instance --private-window=http://localhost:27228/authorize?token=${token}
+
+  create:
+    options:
+      key:
+        default:
+          value: TBD
+    run:
+      - rm -rf tf
+      - mkdir -p tf
+      - |
+          cat > tf/main.tf <<-------
+          terraform {
+            required_providers {
+              spotify = {
+                version = "~> 0.1.4"
+                source  = "conradludgate/spotify"
+              }
+            }
+          }
+
+          variable "spotify_api_key" {
+            type = string
+          }
+
+          provider "spotify" {
+            api_key = var.spotify_api_key
+          }
+
+          resource "spotify_playlist" "playlist" {
+            name        = "My playlist"
+            description = "My playlist is so awesome"
+            public      = false
+
+            tracks = [
+              data.spotify_track.overkill.id,
+              data.spotify_track.blackwater.id,
+              data.spotify_track.overkill.id,
+              data.spotify_search_track.search.tracks[0].id,
+            ]
+          }
+
+          data "spotify_track" "overkill" {
+            url = "https://open.spotify.com/track/4XdaaDFE881SlIaz31pTAG"
+          }
+          data "spotify_track" "blackwater" {
+            spotify_id = "4lE6N1E0L8CssgKEUCgdbA"
+          }
+
+          data "spotify_search_track" "search" {
+            name    = "Somebody Told Me"
+            artists = ["The Killers"]
+            album   = "Hot Fuss"
+          }
+
+          output "test" {
+            value = data.spotify_search_track.search.tracks
+          }
+
+          ------
+
+      - cd tf && terraform init
+      - cd tf && terraform plan -var 'spotify_api_key=${key}'
+      - cd tf && terraform apply -var 'spotify_api_key=${key}'
+      # - ${go-getter} -h
+      # - ${terraform}
+      # - ${go-getter} -progress 'github.com/hashicorp/terraform?ref=v0.15.4' /tmp/terraform
+      # - cd /tmp/terraform && go run .
