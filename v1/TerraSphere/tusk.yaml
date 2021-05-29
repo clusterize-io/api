@@ -40,7 +40,7 @@ tasks:
   create:
     options:
       name:
-        default: my-fedora
+        default: terrasphere
 
       secrets:
         default: ~/.cz/secrets/TerraSphere.yaml
@@ -53,14 +53,18 @@ tasks:
       server:
         default:
           command: yq e '.data.server' ${secrets} | base64 -d
+      
+      pubkey:
+        default:
+          command: cat ~/.ssh/*.pub
     run:
-      # - set-environment:
-      #     GOVC_USERNAME: ${user}
-      #     GOVC_PASSWORD: ${pass}
-      #     GOVC_URL: ${server}
-      #     GOVC_INSECURE: 1
-      # - govc about
-      # - rm -rf tf
+      - set-environment:
+          GOVC_USERNAME: ${user}
+          GOVC_PASSWORD: ${pass}
+          GOVC_URL: ${server}
+          GOVC_INSECURE: 1
+      - govc about
+      - rm -rf tf
       - mkdir -p tf
       - set-environment:
           TF_VAR_vsphere_user: ${user}
@@ -108,32 +112,116 @@ tasks:
           }
           ------
 
-      # iso from scratch
-      # - |
-      #     cat <<------- >> tf/main.tf && cd tf && terraform init && terraform plan && terraform apply -auto-approve
+      - |
+          cat <<------- >> tf/main.tf
+          data "vsphere_ovf_vm_template" "ovf" {
+            name             = "esxi-700"
+            resource_pool_id = "resgroup-1002"
+            datastore_id     = "datastore-1004"
+            host_system_id   = "host-1003"
+            remote_ovf_url   = "https://download3.vmware.com/software/vmw-tools/nested-esxi/Nested_ESXi7.0_Appliance_Template_v1.ova"
+            ovf_network_map = {
+              "Network 1": "network-1005"
+            }
+          }
+          resource "vsphere_virtual_machine" "vm" {
+            datacenter_id = "datacenter-3"
+            name             = data.vsphere_ovf_vm_template.ovf.name
+            num_cpus         = data.vsphere_ovf_vm_template.ovf.num_cpus
+            memory           = data.vsphere_ovf_vm_template.ovf.memory
+            guest_id         = data.vsphere_ovf_vm_template.ovf.guest_id
+            resource_pool_id = data.vsphere_ovf_vm_template.ovf.resource_pool_id
+            datastore_id     = data.vsphere_ovf_vm_template.ovf.datastore_id
+            host_system_id   = data.vsphere_ovf_vm_template.ovf.host_system_id
+            dynamic "network_interface" {
+              for_each = data.vsphere_ovf_vm_template.ovf.ovf_network_map
+              content {
+                network_id = network_interface.value
+              }
+            }
+            ovf_deploy {
+              ovf_network_map = data.vsphere_ovf_vm_template.ovf.ovf_network_map
+              remote_ovf_url  = data.vsphere_ovf_vm_template.ovf.remote_ovf_url
+            }
+          }
+          ------
 
-      #     data "vsphere_datacenter" "dc" {
-      #       name = "dc"
-      #     }
-      #     data "vsphere_datastore" "datastore" {
-      #       name          = "vcsa-nvme"
+      - cd tf && terraform init
+      - cd tf && terraform plan
+      - cd tf && terraform apply -auto-approve -lock=false
+
+        # resource "vsphere_virtual_machine" "${name}-impish-ova" {
+        #   name                       = "${name}-impish-ova"
+        #   resource_pool_id           = data.vsphere_resource_pool.pool.id
+        #   datastore_id               = data.vsphere_datastore.datastore.id
+        #   host_system_id             = data.vsphere_host.host.id
+        #   wait_for_guest_net_timeout = 60
+        #   wait_for_guest_ip_timeout  = 60
+        #   datacenter_id              = data.vsphere_datacenter.dc.id
+
+
+
+
+
+        #   dynamic "network_interface" {
+        #     for_each = data.vsphere_ovf_vm_template.ovf.ovf_network_map
+        #     content {
+        #       network_id = network_interface.value
+        #     }
+        #   }
+
+        #   vapp {
+        #     properties = {
+        #       "instance-id" = "id-ovf"
+        #       "hostname" = "${name}-impish-ova"
+        #       "public-keys" = "${pubkey}"
+        #       "password" = ""
+        #       "user-data" = ""
+        #       "seedfrom" = ""
+        #     }
+        #   }
+        #   ovf_deploy {
+        #     remote_ovf_url = "https://cloud-images.ubuntu.com/impish/current/impish-server-cloudimg-amd64.ova"
+        #     ovf_network_map = data.vsphere_ovf_vm_template.ovf.ovf_network_map
+        #   }
+        # }
+        # ------
+
+      # - |
+      #     cat <<------- >> tf/main.tf
+      #     resource "vsphere_virtual_machine" "groovy" {
       #       datacenter_id = data.vsphere_datacenter.dc.id
+
+      #       name             = "${name}-groovy-ova"
+      #       num_cpus         = 2
+      #       memory           = 2048
+      #       guest_id         = data.vsphere_ovf_vm_template.ovf.guest_id
+      #       resource_pool_id = data.vsphere_ovf_vm_template.ovf.resource_pool_id
+      #       datastore_id     = data.vsphere_ovf_vm_template.ovf.datastore_id
+      #       host_system_id   = data.vsphere_ovf_vm_template.ovf.host_system_id
+
+      #       dynamic "network_interface" {
+      #         for_each = data.vsphere_ovf_vm_template.ovf.ovf_network_map
+      #         content {
+      #           network_id = network_interface.value
+      #         }
+      #       }
+
+      #       ovf_deploy {
+      #         ovf_network_map = data.vsphere_ovf_vm_template.ovf.ovf_network_map
+      #         remote_ovf_url  = "https://cloud-images.ubuntu.com/groovy/current/groovy-server-cloudimg-amd64.ova"
+      #       }
       #     }
-      #     data "vsphere_resource_pool" "pool" {
-      #       name          = "ryzen.vmwlab.io/Resources"
-      #       datacenter_id = data.vsphere_datacenter.dc.id
-      #     }
-      #     data "vsphere_network" "network" {
-      #       name          = "VM Network"
-      #       datacenter_id = data.vsphere_datacenter.dc.id
-      #     }
+      #     ------
+
+      # - |
+      #     cat <<------- >> tf/main.tf
       #     resource "vsphere_virtual_machine" "vm" {
-      #       name             = "${name}"
+      #       name             = "${name}-hirsute-iso"
       #       resource_pool_id = data.vsphere_resource_pool.pool.id
       #       datastore_id     = data.vsphere_datastore.datastore.id
       #       num_cpus = 2
       #       memory   = 2048
-      #       # https://code.vmware.com/apis/358/doc/vim.vm.GuestOsDescriptor.GuestOsIdentifier.html
       #       guest_id = "ubuntu64Guest"
       #       network_interface {
       #         network_id = data.vsphere_network.network.id
@@ -143,8 +231,8 @@ tasks:
       #         size  = 40
       #       }
       #       firmware = "efi"
-      #       wait_for_guest_net_routable = true
-      #       # hv_mode = "hvAuto"
+      #       wait_for_guest_net_timeout = 0
+      #       wait_for_guest_ip_timeout  = 0
       #       cdrom {
       #         datastore_id = data.vsphere_datastore.datastore.id
       #         path         = "ISO/ubuntu-21.04-desktop-amd64.iso"
@@ -152,9 +240,49 @@ tasks:
       #     }
       #     ------
 
-      # from ova
-      - |
-          cat <<------- >> tf/main.tf
+      # - cd tf && rm -f .terraform.lock.hcl && rm -f terraform.tfstate && rm -rf .terraform && 
+      # - cd tf && terraform init
+      # - cd tf && terraform plan
+      # - cd tf && terraform destroy -auto-approve
+      # - terraform destroy -auto-approve
+      # - cd tf && terraform apply -auto-approve -lock=false
+      # - govc vm.info ${name}
+
+
+
+  delete:
+    options:
+      secrets:
+        default: ~/.cz/secrets/TerraSphere.yaml
+      user:
+        default:
+          command: yq e '.data.user' ${secrets} | base64 -d
+      pass:
+        default:
+          command: yq e '.data.pass' ${secrets} | base64 -d
+      server:
+        default:
+          command: yq e '.data.server' ${secrets} | base64 -d
+    run:
+      - mkdir -p tf
+      - set-environment:
+          TF_VAR_vsphere_user: ${user}
+          TF_VAR_vsphere_password: ${pass}
+          TF_VAR_vsphere_server: ${server}
+      - killall terraform
+      - cd tf && terraform destroy --auto-approve -lock=false
+
+
+
+
+---
+  convert:
+    run:
+      - kubectl create deployment jenkins --image jenkins/jenkins:latest --port 8080 --replicas 3 --dry-run=client -o yaml > /tmp/in.yaml
+      - cat /tmp/in.yaml | yq e -
+      - sleep 2
+      - echo 'yamldecode(file("/tmp/in.yaml"))' | terraform console
+
           # resource "vsphere_virtual_machine" "vmFromLocalOvf" {
           #   name                       = "vm1"
           #   resource_pool_id           = data.vsphere_resource_pool.pool.id
@@ -179,61 +307,3 @@ tasks:
           #     }
           #   }
           # }
-
-          resource "vsphere_virtual_machine" "vmFromRemoteOvf" {
-            name                       = "${name}"
-            resource_pool_id           = data.vsphere_resource_pool.pool.id
-            datastore_id               = data.vsphere_datastore.datastore.id
-            host_system_id             = data.vsphere_host.host.id
-            wait_for_guest_net_timeout = 0
-            wait_for_guest_ip_timeout  = 0
-            datacenter_id              = data.vsphere_datacenter.dc.id
-            cdrom {
-              client_device = true
-            }
-            ovf_deploy {
-              remote_ovf_url = "https://cloud-images.ubuntu.com/impish/current/impish-server-cloudimg-amd64.ova"
-            }
-          }
-          ------
-      # - cd tf && rm -f .terraform.lock.hcl && rm -f terraform.tfstate && rm -rf .terraform && 
-      - cd tf && terraform init
-      - cd tf && terraform plan
-      - cd tf && terraform destroy -auto-approve
-      # - terraform destroy -auto-approve
-      - cd tf && terraform apply -auto-approve
-      # - govc vm.info ${name}
-
-
-
-  delete:
-    options:
-      secrets:
-        default: ~/.cz/secrets/TerraSphere.yaml
-      user:
-        default:
-          command: yq e '.data.user' ${secrets} | base64 -d
-      pass:
-        default:
-          command: yq e '.data.pass' ${secrets} | base64 -d
-      server:
-        default:
-          command: yq e '.data.server' ${secrets} | base64 -d
-    run:
-      - mkdir -p tf
-      - set-environment:
-          TF_VAR_vsphere_user: ${user}
-          TF_VAR_vsphere_password: ${pass}
-          TF_VAR_vsphere_server: ${server}
-      - cd tf && terraform destroy --auto-approve
-
-
-
-
----
-  convert:
-    run:
-      - kubectl create deployment jenkins --image jenkins/jenkins:latest --port 8080 --replicas 3 --dry-run=client -o yaml > /tmp/in.yaml
-      - cat /tmp/in.yaml | yq e -
-      - sleep 2
-      - echo 'yamldecode(file("/tmp/in.yaml"))' | terraform console
